@@ -20,7 +20,7 @@ jobs:
           cache: maven
       - name: Unit, PostgreSQL and Kafka integration tests
         run: mvn --batch-mode --no-transfer-progress verify
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - name: Carrier simulator tests
