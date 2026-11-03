@@ -36,11 +36,11 @@ jobs:
             -czf dist/orderops-${{ github.sha }}.tar.gz infra tools contracts docs README.md \
             services/order-service/target/order-service-0.1.0-SNAPSHOT.jar \
             services/fulfillment-service/target/fulfillment-service-0.1.0-SNAPSHOT.jar
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: orderops-backend-release
           path: dist/orderops-*.tar.gz
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: backend-test-results
