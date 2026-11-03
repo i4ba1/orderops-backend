@@ -1,0 +1,5 @@
+spring:
+  datasource:
+    url: ${FULFILLMENT_DATABASE_URL:jdbc:postgresql://localhost:5433/fulfillment}
+    username: ${FULFILLMENT_DATABASE_USERNAME:fulfillment}
+    password: ${FULFILLMENT_DATABASE_PASSWORD:fulfillment-local-only}

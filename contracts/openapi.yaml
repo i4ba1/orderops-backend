@@ -1,0 +1,289 @@
+openapi: 3.0.3
+info:
+  title: OrderOps Order API
+  version: 1.0.0
+  description: Order operations, durable fulfillment and recovery. Session authentication; writes require a fresh CSRF token and idempotency key.
+servers:
+  - url: http://localhost:8088
+security:
+  - session: []
+paths:
+  /internal/health:
+    get:
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: Application process is serving requests; this is not a dependency readiness check.
+  /api/csrf:
+    get:
+      operationId: csrfToken
+      security: []
+      responses:
+        '200':
+          description: Session CSRF token; obtain a fresh token after login.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [headerName, parameterName, token]
+                properties:
+                  headerName: {type: string, example: X-CSRF-TOKEN}
+                  parameterName: {type: string, example: _csrf}
+                  token: {type: string}
+  /login:
+    post:
+      operationId: login
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: {type: string, enum: [operator, viewer]}
+                password: {type: string, format: password}
+      responses:
+        '204': {description: Authenticated session established. Retrieve a fresh CSRF token.}
+        '401': {description: Invalid credentials.}
+        '403': {description: Missing or invalid CSRF token.}
+  /api/inventory:
+    get:
+      operationId: listInventory
+      responses:
+        '200':
+          description: Inventory sorted by SKU.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [sku, name, availableQuantity]
+                  properties:
+                    sku: {type: string}
+                    name: {type: string}
+                    availableQuantity: {type: integer, minimum: 0}
+        '401': {description: Authentication required.}
+  /api/session:
+    get:
+      operationId: getSession
+      responses:
+        '200':
+          description: Current authenticated identity.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [username, role]
+                properties:
+                  username: {type: string}
+                  role: {type: string, enum: [OPERATOR, VIEWER]}
+        '401': {description: Authentication required.}
+  /logout:
+    post:
+      operationId: logout
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '204': {description: Session ended.}
+        '403': {description: Valid CSRF token required.}
+  /api/orders:
+    get:
+      operationId: listOrders
+      parameters:
+        - name: page
+          in: query
+          schema: {type: integer, minimum: 0, default: 0}
+        - name: size
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: Orders newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [content, number, size, totalElements, totalPages]
+                properties:
+                  content:
+                    type: array
+                    items: {$ref: '#/components/schemas/Order'}
+                  number: {type: integer}
+                  size: {type: integer}
+                  totalElements: {type: integer}
+                  totalPages: {type: integer}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {description: Authentication required.}
+    post:
+      operationId: createOrder
+      description: Operator role required. Keys are scoped to the authenticated actor and operation. Reordered SKU lines compare canonically; changed payload reuse is rejected.
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerReference, shippingAddress, items]
+              properties:
+                customerReference: {type: string, minLength: 1, maxLength: 120, pattern: '.*\S.*'}
+                shippingAddress: {$ref: '#/components/schemas/ShippingAddress'}
+                demoScenario: {type: string, enum: [NORMAL, FAIL_THEN_RECOVER, TIMEOUT_AFTER_CREATE], default: NORMAL}
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  description: Each SKU must appear once.
+                  items:
+                    $ref: '#/components/schemas/OrderItem'
+      responses:
+        '200':
+          description: Identical request replay; returns the existing order without reserving stock again.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Order'}
+        '201':
+          description: Order confirmed and stock reserved; outgoing event persisted.
+          headers:
+            Location:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Order'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {description: Authentication required.}
+        '403': {description: Operator role and valid CSRF token required.}
+        '404': {description: An inventory SKU does not exist; nothing is reserved.}
+        '409': {description: Insufficient stock or conflicting key reuse; no new order or reservation is created.}
+  /api/orders/{id}:
+    get:
+      operationId: getOrder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Order details.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Order'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {description: Authentication required.}
+        '404': {description: Order does not exist.}
+  /api/orders/{id}/retry:
+    post:
+      operationId: retryFulfillment
+      description: Operator only. A failed order returns to CONFIRMED in a new attempt generation. The carrier key remains the order UUID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Replay of a previously accepted retry.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Order'}
+        '202':
+          description: Recovery scheduled durably.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Order'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {description: Authentication required.}
+        '403': {description: Operator and valid CSRF required.}
+        '404': {description: Order does not exist.}
+        '409': {description: Order cannot be retried in its current state or the key conflicts.}
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: JSESSIONID
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 8, maxLength: 100, pattern: '^[A-Za-z0-9_-]+$'}
+    CsrfToken:
+      name: X-CSRF-TOKEN
+      in: header
+      required: true
+      schema: {type: string}
+  schemas:
+    ShippingAddress:
+      type: object
+      required: [recipient, line1, city, postalCode, country]
+      properties:
+        recipient: {type: string, minLength: 1, maxLength: 120}
+        line1: {type: string, minLength: 1, maxLength: 200}
+        city: {type: string, minLength: 1, maxLength: 100}
+        postalCode: {type: string, minLength: 1, maxLength: 32}
+        country: {type: string, pattern: '^[A-Z]{2}$'}
+    OrderItem:
+      type: object
+      required: [sku, quantity]
+      properties:
+        sku: {type: string, pattern: '^[A-Z0-9][A-Z0-9_-]{0,63}$'}
+        quantity: {type: integer, minimum: 1, maximum: 1000}
+    Order:
+      type: object
+      required: [id, customerReference, status, createdAt, items, attemptGeneration, timeline]
+      properties:
+        id: {type: string, format: uuid}
+        customerReference: {type: string}
+        status: {type: string, enum: [CONFIRMED, SHIPMENT_CREATED, FULFILLMENT_FAILED]}
+        createdAt: {type: string, format: date-time}
+        shippingAddress: {$ref: '#/components/schemas/ShippingAddress'}
+        demoScenario: {type: string, enum: [NORMAL, FAIL_THEN_RECOVER, TIMEOUT_AFTER_CREATE]}
+        attemptGeneration: {type: integer, minimum: 1}
+        shipmentId: {type: string, nullable: true}
+        trackingNumber: {type: string, nullable: true}
+        timeline:
+          type: array
+          items:
+            type: object
+            required: [id, type, message, occurredAt]
+            properties:
+              id: {type: string, format: uuid}
+              type: {type: string}
+              message: {type: string}
+              occurredAt: {type: string, format: date-time}
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/OrderItem'}
+    Problem:
+      type: object
+      properties:
+        type: {type: string}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        instance: {type: string}
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field: {type: string}
+              message: {type: string}
+  responses:
+    BadRequest:
+      description: Invalid request; application errors use Problem Details.
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}

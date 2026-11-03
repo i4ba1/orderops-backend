@@ -1,0 +1,48 @@
+logging:
+  structured:
+    format:
+      console: ecs
+spring:
+  application:
+    name: order-service
+  kafka:
+    bootstrap-servers: ${ORDEROPS_KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.block.ms: 2000
+        request.timeout.ms: 3000
+        delivery.timeout.ms: 5000
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      max-poll-records: 20
+  datasource:
+    url: ${ORDEROPS_DATABASE_URL}
+    username: ${ORDEROPS_DATABASE_USERNAME}
+    password: ${ORDEROPS_DATABASE_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+server:
+  port: 8080
+  error:
+    include-message: never
+    include-stacktrace: never
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+orderops:
+  security:
+    operator-password: ${ORDEROPS_OPERATOR_PASSWORD}
+    viewer-password: ${ORDEROPS_VIEWER_PASSWORD}

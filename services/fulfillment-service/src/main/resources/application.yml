@@ -1,0 +1,47 @@
+logging:
+  structured:
+    format:
+      console: ecs
+spring:
+  application:
+    name: fulfillment-service
+  datasource:
+    url: ${FULFILLMENT_DATABASE_URL}
+    username: ${FULFILLMENT_DATABASE_USERNAME}
+    password: ${FULFILLMENT_DATABASE_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+  task:
+    scheduling:
+      pool:
+        size: 2
+  kafka:
+    bootstrap-servers: ${ORDEROPS_KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    consumer:
+      group-id: orderops-fulfillment-v1
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        max.poll.interval.ms: 60000
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        delivery.timeout.ms: 10000
+        request.timeout.ms: 5000
+        max.block.ms: 10000
+orderops:
+  carrier:
+    base-url: ${CARRIER_BASE_URL:http://localhost:8090}
+    timeout: PT1S
+  fulfillment:
+    lease: PT30S
+    backoff: PT2S
+server:
+  port: 8081

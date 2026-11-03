@@ -1,0 +1,114 @@
+name: Verify frontend and backend together
+
+on:
+  workflow_dispatch:
+    inputs:
+      frontend_repository:
+        description: Frontend GitHub repository (owner/repository)
+        required: true
+        type: string
+      frontend_ref:
+        description: Frontend commit SHA to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: backend
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.frontend_repository }}
+          ref: ${{ inputs.frontend_ref }}
+          path: frontend
+          token: ${{ secrets.FRONTEND_REPO_TOKEN || github.token }}
+      - name: Record source pair
+        run: |
+          git rev-parse HEAD
+          git -C ../frontend rev-parse HEAD
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/**/pom.xml
+      - run: mvn --batch-mode --no-transfer-progress verify
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: node --test tools/carrier-simulator/test/server.test.mjs
+      - name: Frontend verification
+        working-directory: frontend
+        run: |
+          npm ci --no-fund
+          npm audit --audit-level=high
+          npm test
+          npm run build
+          npx playwright install --with-deps chromium
+          npm run test:ui
+      - name: Build and start both projects
+        run: |
+          docker compose --env-file .env.example -f infra/compose.yaml -f infra/compose.frontend-build.yaml --profile apps up -d --build
+          for attempt in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8088/api/csrf >/dev/null && curl -fsS http://127.0.0.1:8081/internal/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - name: Real stack recovery journey
+        working-directory: frontend
+        env:
+          ORDEROPS_E2E_URL: http://127.0.0.1:8088
+        run: npm run test:e2e
+      - name: Record five-minute real-stack demonstration
+        working-directory: frontend
+        env:
+          ORDEROPS_DEMO_URL: http://127.0.0.1:8088
+        run: npm run demo:record
+      - name: Check backup restoration in disposable PostgreSQL
+        run: |
+          compose=(docker compose --env-file .env.example -f infra/compose.yaml --profile apps)
+          "${compose[@]}" stop order-service fulfillment-service
+          mkdir -p .cache/restore-check
+          "${compose[@]}" exec -T postgres pg_dump -U postgres -Fc orders > .cache/restore-check/orders.dump
+          "${compose[@]}" exec -T postgres pg_dump -U postgres -Fc fulfillment > .cache/restore-check/fulfillment.dump
+          "${compose[@]}" exec -T carrier-simulator cat /data/state.json > .cache/restore-check/carrier-state.json
+          git rev-parse HEAD > .cache/restore-check/release.txt
+          (cd .cache/restore-check && sha256sum orders.dump fulfillment.dump carrier-state.json release.txt > SHA256SUMS)
+          bash infra/aws/restore-check.sh .cache/restore-check
+      - name: Upload successful real-stack demonstration
+        uses: actions/upload-artifact@v4
+        with:
+          name: orderops-live-demo
+          path: |
+            frontend/.cache/demo/orderops-demo.webm
+            frontend/.cache/demo/evidence.json
+      - name: Capture stack logs
+        if: always()
+        run: |
+          mkdir -p .cache/ci
+          docker compose --env-file .env.example -f infra/compose.yaml --profile apps logs --no-color --tail=200 > .cache/ci/stack.log
+          docker compose --env-file .env.example -f infra/compose.yaml --profile apps down
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-results
+          path: |
+            backend/services/*/target/surefire-reports/
+            backend/services/*/target/failsafe-reports/
+            backend/.cache/ci/stack.log
+            frontend/playwright-report/
+            frontend/test-results/

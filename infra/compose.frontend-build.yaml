@@ -1,0 +1,5 @@
+# Optional local development override. Paths resolve relative to infra/compose.yaml.
+services:
+  web:
+    build:
+      context: ${ORDEROPS_FRONTEND_PATH:-../../frontend}

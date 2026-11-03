@@ -1,0 +1,42 @@
+services:
+  order-service:
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+      SERVER_SERVLET_SESSION_COOKIE_SECURE: 'true'
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
+      SPRING_FLYWAY_LOCATIONS: classpath:db/migration,classpath:db/local
+  fulfillment-service:
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+  postgres:
+    restart: unless-stopped
+  kafka:
+    restart: unless-stopped
+  carrier-simulator:
+    restart: unless-stopped
+  web:
+    restart: unless-stopped
+    image: ${ORDEROPS_FRONTEND_IMAGE:?Set a verified frontend image tag or digest}
+  https:
+    image: caddy:2-alpine
+    profiles: ["apps"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?Set the HTTPS domain}
+      ACME_EMAIL: ${ACME_EMAIL:?Set the certificate contact email}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_started
+
+volumes:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,6 @@
+.git
+.cache
+.scratch
+.env
+**/src
+**/target/*.jar.original

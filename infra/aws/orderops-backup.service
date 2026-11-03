@@ -1,0 +1,9 @@
+[Unit]
+Description=OrderOps database and carrier state backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/orderops/current/infra/aws/backup.sh
+UMask=0077

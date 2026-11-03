@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: ${ORDEROPS_DATABASE_URL:jdbc:postgresql://localhost:5433/orders}
+    username: ${ORDEROPS_DATABASE_USERNAME:orders}
+    password: ${ORDEROPS_DATABASE_PASSWORD:orders-local-only}
+  flyway:
+    locations: classpath:db/migration,classpath:db/local
+orderops:
+  security:
+    operator-password: ${ORDEROPS_OPERATOR_PASSWORD:operator-local-only}
+    viewer-password: ${ORDEROPS_VIEWER_PASSWORD:viewer-local-only}

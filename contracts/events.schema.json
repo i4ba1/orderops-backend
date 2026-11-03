@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orderops.example/contracts/events.schema.json",
+  "title": "OrderOps event envelope v1",
+  "type": "object",
+  "required": ["eventId", "orderId", "eventType", "schemaVersion", "occurredAt", "payload"],
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "orderId": { "type": "string", "format": "uuid" },
+    "eventType": { "enum": ["OrderConfirmed", "RetryRequested", "ShipmentCreated", "FulfillmentFailed"] },
+    "schemaVersion": { "const": 1 },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "payload": {
+      "type": "object",
+      "required": ["attemptGeneration"],
+      "properties": {
+        "attemptGeneration": { "type": "integer", "minimum": 1 },
+        "customerReference": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "demoScenario": { "enum": ["NORMAL", "FAIL_THEN_RECOVER", "TIMEOUT_AFTER_CREATE"] },
+        "shippingAddress": {
+          "type": "object",
+          "required": ["recipient", "line1", "city", "postalCode", "country"],
+          "properties": {
+            "recipient": { "type": "string", "minLength": 1, "maxLength": 120 },
+            "line1": { "type": "string", "minLength": 1, "maxLength": 200 },
+            "city": { "type": "string", "minLength": 1, "maxLength": 100 },
+            "postalCode": { "type": "string", "minLength": 1, "maxLength": 32 },
+            "country": { "type": "string", "pattern": "^[A-Z]{2}$" }
+          }
+        },
+        "items": {
+          "type": "array", "minItems": 1, "maxItems": 20,
+          "items": {
+            "type": "object", "required": ["sku", "quantity"],
+            "properties": { "sku": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9_-]{0,63}$" }, "quantity": { "type": "integer", "minimum": 1, "maximum": 1000 } }
+          }
+        },
+        "shipmentId": { "type": ["string", "null"] },
+        "trackingNumber": { "type": ["string", "null"] },
+        "message": { "type": ["string", "null"] }
+      }
+    }
+  },
+  "allOf": [
+    { "if": { "properties": { "eventType": { "enum": ["OrderConfirmed", "RetryRequested"] } } }, "then": { "properties": { "payload": { "required": ["customerReference", "shippingAddress", "demoScenario", "items"] } } } },
+    { "if": { "properties": { "eventType": { "const": "ShipmentCreated" } } }, "then": { "properties": { "payload": { "required": ["shipmentId", "trackingNumber"], "properties": { "shipmentId": { "type": "string", "minLength": 1 }, "trackingNumber": { "type": "string", "minLength": 1 } } } } } },
+    { "if": { "properties": { "eventType": { "const": "FulfillmentFailed" } } }, "then": { "properties": { "payload": { "required": ["message"], "properties": { "message": { "type": "string", "minLength": 1 } } } } } }
+  ]
+}

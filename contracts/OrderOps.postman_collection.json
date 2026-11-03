@@ -1,0 +1,329 @@
+{
+  "info": {
+    "name": "OrderOps",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Run Foundation API for baseline checks. Recovery is a separate folder for a FAIL_THEN_RECOVER order after its automatic attempts are exhausted. Cookies are managed by the collection runner. Values are local demo defaults."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8088"
+    },
+    {
+      "key": "username",
+      "value": "operator"
+    },
+    {
+      "key": "password",
+      "value": "operator-local-only"
+    },
+    {
+      "key": "scenario",
+      "value": "NORMAL"
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get(\"requestKey\")) pm.collectionVariables.set(\"requestKey\", pm.variables.replaceIn(\"{{$guid}}\"));",
+          "if (!pm.collectionVariables.get(\"retryKey\")) pm.collectionVariables.set(\"retryKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Foundation API",
+      "item": [
+        {
+          "name": "Anonymous CSRF",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/csrf"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"CSRF token returned\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"csrfToken\", pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Session login",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/login",
+            "header": [
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "{{username}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{password}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Session authenticated\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Authenticated CSRF",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/csrf"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"CSRF token returned\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"csrfToken\", pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current session",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/session"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Operator session\", () => {pm.response.to.have.status(200);pm.expect(pm.response.json().role).to.equal(\"OPERATOR\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Inventory",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/inventory"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Inventory returned\", () => {pm.response.to.have.status(200);pm.expect(pm.response.json()).to.be.an(\"array\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create order",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{requestKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerReference\": \"POSTMAN-DEMO\",\n  \"shippingAddress\": {\n    \"recipient\": \"Ada Lovelace\",\n    \"line1\": \"10 Example Street\",\n    \"city\": \"London\",\n    \"postalCode\": \"SW1A 1AA\",\n    \"country\": \"GB\"\n  },\n  \"demoScenario\": \"{{scenario}}\",\n  \"items\": [\n    {\n      \"sku\": \"COFFEE\",\n      \"quantity\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Order accepted or safely replayed\", () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "pm.collectionVariables.set(\"orderId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Replay same request",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{requestKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerReference\": \"POSTMAN-DEMO\",\n  \"shippingAddress\": {\n    \"recipient\": \"Ada Lovelace\",\n    \"line1\": \"10 Example Street\",\n    \"city\": \"London\",\n    \"postalCode\": \"SW1A 1AA\",\n    \"country\": \"GB\"\n  },\n  \"demoScenario\": \"{{scenario}}\",\n  \"items\": [\n    {\n      \"sku\": \"COFFEE\",\n      \"quantity\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Replay returns the same order\", () => {pm.response.to.have.status(200);pm.expect(pm.response.json().id).to.equal(pm.collectionVariables.get(\"orderId\"));});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Read created order",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/orders/{{orderId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Order identity preserved\", () => {pm.response.to.have.status(200);pm.expect(pm.response.json().id).to.equal(pm.collectionVariables.get(\"orderId\"));});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List orders",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/orders?page=0&size=20"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Paginated orders\", () => {pm.response.to.have.status(200);pm.expect(pm.response.json().content).to.be.an(\"array\");});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Recovery",
+      "item": [
+        {
+          "name": "Retry failed order",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/{{orderId}}/retry",
+            "header": [
+              {
+                "key": "X-CSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{retryKey}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Recovery accepted or replayed\", () => pm.expect([200,202]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Read recovery progress",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/orders/{{orderId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Timeline available\", () => {pm.response.to.have.status(200);pm.expect(pm.response.json().timeline).to.be.an(\"array\");});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
