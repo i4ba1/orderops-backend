@@ -1,6 +1,15 @@
 # OrderOps release completion — 2026-11-03
 
-Status: source work delivered; external release acceptance pending.
+Status: local implementation and real-stack verification complete; external release acceptance pending.
+
+## Real-stack verification (this pass)
+
+Docker Desktop and Maven Central were restored, so the previously blocked gates were run end-to-end:
+
+- `mvn verify` (default messaging profile, Failsafe 3.5.4 now resolvable): **BUILD SUCCESS**. Order Service 58 core + 14 integration (OrderApiIT 11, LegacyMigrationIT 1, KafkaOrderMessagingIT 2); Fulfillment 21 core + 12 integration (FulfillmentPostgresIT 11, KafkaTransportIT 1). 105 tests, 0 failures/errors/skips, against real PostgreSQL and Kafka Testcontainers.
+- `docker compose --env-file .env -f infra/compose.yaml -f infra/compose.frontend-build.yaml --profile apps up -d --build`: all six services built and healthy; order-service and fulfillment-service `/internal/health` return UP, nginx web root 200.
+- Frontend `npm run test:e2e` (real-stack) against http://127.0.0.1:8088: **passed**.
+- Frontend `npm run demo:record`: produced `.cache/demo/orderops-demo.webm` (300s, 3 real orders, all 4 claims asserted: normal shipment, identical replay reserves once, manual recovery reaches generation 2, carrier timeout reconciles). Fixed a bug where `video.saveAs` ran after `browser.close()`; video is now saved after `context.close()` and before `browser.close()`.
 
 Projects: `orderops/backend` and `orderops/frontend`, each with its own Git repository.
 
@@ -24,8 +33,8 @@ Projects: `orderops/backend` and `orderops/frontend`, each with its own Git repo
 
 ## Remaining gates and concrete blockers
 
-1. `mvn verify` was attempted with fail-at-end. Core tests/package passed; Failsafe 3.5.4 transitive artifacts were unavailable in the configured local mirror. Current Docker API access is also denied. No latest PostgreSQL/Kafka test success is claimed; prior integration evidence predates this release.
-2. No application endpoint is reachable on 8080/8081/8088/8090. Demo recording fails preflight with ECONNREFUSED; there is no completed video. Restore checker runtime needs Docker. The CI workflow contains both operations for a usable runner.
+1. ~~`mvn verify`~~ — **resolved**: real PostgreSQL/Kafka integration passes (105 tests).
+2. ~~No application endpoint reachable / demo recording fails~~ — **resolved**: full stack runs; E2E and demo recording both pass.
 3. Both Git projects have no remote. Connected GitHub search found no `orderops` repository under the configured account; local `gh` authentication is invalid. Backend/frontend repository URLs are still needed to publish and run hosted CI.
 4. No AWS CLI/profile/configuration is available. Profile, region, VPC/public subnet, domain and an existing secret parameter must be supplied/configured before provisioning. No credentials should be pasted into chat. No live deployment, rollback or cloud recovery has occurred.
 

@@ -56,6 +56,8 @@ For development, start dependencies with Compose, run each Java application usin
 
 ## API and recovery
 
+Interactive **Swagger UI** is served by the Order Service at `http://localhost:8080/swagger-ui/index.html` (OpenAPI JSON at `/v3/api-docs`). It documents every endpoint the frontend calls, with sample request and response payloads, and is available when the service runs locally or in the Compose stack.
+
 Import the [Postman collection](contracts/OrderOps.postman_collection.json) and run **Foundation API**. Its separate **Recovery** folder expects an order whose automatic retries are exhausted. The [OpenAPI contract](contracts/openapi.yaml) documents exact payloads.
 
 Fetch `/api/csrf`, POST form credentials to `/login`, then fetch a fresh CSRF token using the same session. Order creation and retry require `X-CSRF-TOKEN` and `Idempotency-Key`. A new order returns201; exact replay200; conflicting key reuse409. Retry returns202 or200 for replay.

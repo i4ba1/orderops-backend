@@ -21,7 +21,13 @@ public class SecurityConfig {
         return http.authorizeHttpRequests(
                         auth ->
                                 auth.requestMatchers(
-                                                "/internal/health", "/api/csrf", "/login", "/error")
+                                                "/internal/health",
+                                                "/api/csrf",
+                                                "/login",
+                                                "/error",
+                                                "/v3/api-docs/**",
+                                                "/swagger-ui/**",
+                                                "/swagger-ui.html")
                                         .permitAll()
                                         .requestMatchers(HttpMethod.GET, "/api/**")
                                         .hasAnyRole("VIEWER", "OPERATOR")
