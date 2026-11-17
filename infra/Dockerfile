@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:24-jre
 ARG SERVICE
 ARG VERSION=0.1.0-SNAPSHOT
 WORKDIR /app
